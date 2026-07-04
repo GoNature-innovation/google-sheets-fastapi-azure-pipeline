@@ -1,0 +1,16 @@
+# Python Cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# Google Service Account
+service_account.json
+
+# Environment Variables
+#.env
+
+# Virtual Environment
+#venv/
+#.venv/
