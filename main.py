@@ -2,10 +2,10 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 import gspread
 from google.oauth2.service_account import Credentials
+import os
+import json
 
 app = FastAPI()
-
-SERVICE_ACCOUNT_FILE = "service_account.json"
 
 SPREADSHEET_NAME = "Copy of SILVERMEMBERSHIP SALES SHEET (L1) | H.I.G.H RAZORPAY 2025-26"
 
@@ -14,8 +14,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly"
 ]
 
-creds = Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE,
+service_account_info = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"])
+
+creds = Credentials.from_service_account_info(
+    service_account_info,
     scopes=SCOPES
 )
 
@@ -40,7 +42,6 @@ def get_buyers_data(
     total_records = 0
 
     start_index = (page - 1) * limit
-    end_index = start_index + limit
 
     for worksheet in spreadsheet.worksheets():
         sheet_name = worksheet.title
@@ -72,7 +73,6 @@ def get_buyers_data(
                     row[header] = row_values[i] if i < len(row_values) else ""
 
             row["Sheet_Name"] = sheet_name
-
             final_data.append(row)
 
         if len(final_data) >= limit:
