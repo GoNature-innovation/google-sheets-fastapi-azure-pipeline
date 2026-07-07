@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 import gspread
 from google.oauth2.service_account import Credentials
 import os
 import json
+import traceback
 
 app = FastAPI()
 
@@ -33,55 +34,73 @@ def home():
 
 @app.get("/buyers-data")
 def get_buyers_data(
-    page: int = Query(1, ge=1),
-    limit: int = Query(500, ge=1, le=5000)
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=1000, ge=1, le=5000)
 ):
-    spreadsheet = client.open(SPREADSHEET_NAME)
+    try:
+        spreadsheet = client.open(SPREADSHEET_NAME)
 
-    final_data = []
-    total_records = 0
+        all_records = []
 
-    start_index = (page - 1) * limit
+        for worksheet in spreadsheet.worksheets():
+            sheet_name = worksheet.title
 
-    for worksheet in spreadsheet.worksheets():
-        sheet_name = worksheet.title
-
-        if "buyers" not in sheet_name.lower():
-            continue
-
-        values = worksheet.get_all_values()
-
-        if len(values) < 2:
-            continue
-
-        headers = values[0]
-        rows = values[1:]
-
-        for row_values in rows:
-            total_records += 1
-
-            if total_records <= start_index:
+            if "buyers" not in sheet_name.lower():
                 continue
 
-            if len(final_data) >= limit:
-                break
+            values = worksheet.get_all_values()
 
-            row = {}
+            if len(values) < 2:
+                continue
 
-            for i, header in enumerate(headers):
-                if header.strip() != "":
-                    row[header] = row_values[i] if i < len(row_values) else ""
+            headers = values[0]
+            rows = values[1:]
 
-            row["Sheet_Name"] = sheet_name
-            final_data.append(row)
+            for row_values in rows:
+                row = {}
 
-        if len(final_data) >= limit:
-            break
+                for i, header in enumerate(headers):
+                    clean_header = header.strip()
 
-    return JSONResponse(content={
-        "page": page,
-        "limit": limit,
-        "records_returned": len(final_data),
-        "has_more": len(final_data) == limit,
-        "data": final_data
-    })
+                    if clean_header != "":
+                        row[clean_header] = row_values[i] if i < len(row_values) else ""
+
+                row["Sheet_Name"] = sheet_name
+                all_records.append(row)
+
+        total_records = len(all_records)
+
+        start_index = (page - 1) * limit
+        end_index = start_index + limit
+
+        paginated_data = all_records[start_index:end_index]
+
+        has_more = end_index < total_records
+
+        if has_more:
+            next_page = page + 1
+            base_url = str(request.url).split("?")[0]
+            next_url = f"{base_url}?page={next_page}&limit={limit}"
+        else:
+            next_url = None
+
+        return JSONResponse(content={
+            "page": page,
+            "limit": limit,
+            "total_records": total_records,
+            "records_returned": len(paginated_data),
+            "has_more": has_more,
+            "next_url": next_url,
+            "data": paginated_data
+        })
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Internal Server Error",
+                "message": str(e),
+                "traceback": traceback.format_exc()
+            }
+        )
